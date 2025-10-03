@@ -1,0 +1,30 @@
+version: "3.8"
+services:
+  vscode-ssh:
+    image: ghcr.io/linuxserver/openssh-server:latest
+    container_name: vscode-ssh
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
+      # Adicione sua chave pública (uma linha) ou use o campo "PUBLIC_KEY_FILE" apontando pra /config/authorized_keys
+      - PUBLIC_KEY="ssh-rsa AAAA... seu_ssh_public_key ... user@example"
+    volumes:
+      - vscode-ssh-config:/config
+      # monta o socket do docker para permitir que o usuário no container acesse o daemon e conecte outros containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - portainer_network
+    ports:
+      # porta interna do container (linuxserver/openssh-server usa 2222 por padrão)
+      - target: 2222
+        published: 2222
+        protocol: tcp
+        mode: host
+
+volumes:
+  vscode-ssh-config:
+
+networks:
+  portainer_network:
+    external: true

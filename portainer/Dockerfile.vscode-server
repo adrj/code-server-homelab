@@ -1,0 +1,80 @@
+FROM ubuntu:22.04
+
+# Minimal image to run vscode-server remote and docker client
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    git \
+    gnupg \
+    iproute2 \
+    jq \
+    lsb-release \
+    openssh-server \
+    procps \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI, Node (npm), pnpm, code-server and Supabase CLI in one layer
+ARG CODE_SERVER_VERSION=latest
+ARG SUPABASE_CLI_VERSION=latest
+RUN set -eux; \
+  # Install Docker CLI
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg; \
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list; \
+  apt-get update; apt-get install -y docker-ce-cli; rm -rf /var/lib/apt/lists/*; \
+  \
+  # Install Node.js (npm) via NodeSource (LTS) and then pnpm
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+  apt-get update; apt-get install -y nodejs; rm -rf /var/lib/apt/lists/*; \
+  npm install -g pnpm@latest; \
+  \
+  # Install code-server using the official installer script (keeps install robust across releases)
+  if [ "${CODE_SERVER_VERSION}" = "latest" ]; then \
+    curl -fsSL https://code-server.dev/install.sh | sh -s --; \
+  else \
+    curl -fsSL https://code-server.dev/install.sh | sh -s -- --version ${CODE_SERVER_VERSION}; \
+  fi; \
+  \
+  # Install Supabase CLI (default: latest). You can override at build time with --build-arg SUPABASE_CLI_VERSION=<tag|latest>
+  if [ "${SUPABASE_CLI_VERSION}" = "latest" ]; then \
+    API_URL="https://api.github.com/repos/supabase/cli/releases/latest"; \
+  else \
+    TAG="${SUPABASE_CLI_VERSION}"; \
+    API_URL="https://api.github.com/repos/supabase/cli/releases/tags/${TAG}"; \
+  fi; \
+  # choose a Linux amd64/x86_64 asset from the release assets
+  ASSET_URL=$(curl -s "$API_URL" \
+    | jq -r '.assets[] | select(.name|test("linux.*(amd64|x86_64)")) | .browser_download_url' \
+    | head -n1); \
+  if [ -z "$ASSET_URL" ]; then \
+    echo "Could not find supabase linux asset in release ${API_URL}" >&2; exit 1; \
+  fi; \
+  echo "Downloading supabase from $ASSET_URL"; \
+  curl -fsSL "$ASSET_URL" -o /tmp/supabase.tar.gz; \
+  tar -tzf /tmp/supabase.tar.gz; \
+  tar -xzf /tmp/supabase.tar.gz -C /usr/local/bin || true; \
+  # If the tar contains a top-level folder, try to move the binary into /usr/local/bin
+  if [ ! -x /usr/local/bin/supabase ]; then \
+    BIN_PATH=$(tar -tzf /tmp/supabase.tar.gz | grep -m1 -E '(^|/)(supabase)$' || true); \
+    if [ -n "$BIN_PATH" ]; then \
+      tar -xzf /tmp/supabase.tar.gz -C /tmp "$BIN_PATH"; \
+  mv "/tmp/$BIN_PATH" /usr/local/bin/supabase || true; \
+    fi; \
+  fi; \
+  chmod +x /usr/local/bin/supabase || true; \
+  /usr/local/bin/supabase --version || true
+
+# Create a user and copy init script
+COPY init-users.sh /usr/local/bin/init-users.sh
+# Copy repository-provided users into image so init script can seed the volume when empty
+ARG IMAGE_VERSION=dev
+COPY users /opt/repo-users
+RUN echo "${IMAGE_VERSION}" > /opt/repo-users/.image_version \
+  && useradd -m -s /bin/bash coder \
+  && echo "coder ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/coder \
+  && chmod +x /usr/local/bin/init-users.sh \
+  && mkdir -p /var/run/sshd
+EXPOSE 2222
+
+CMD ["/usr/sbin/sshd","-D"]

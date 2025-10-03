@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  vscode-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.vscode-server
+    image: vscode-server:local
+    container_name: vscode-server
+    ports:
+      - "2222:2222"
+    volumes:
+      - code-server:/users-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=America/Sao_Paulo
+    restart: unless-stopped
+    command: ["/bin/bash","-c","/usr/local/bin/init-users.sh"]
+
+volumes:
+  code-server:
+    external: true
