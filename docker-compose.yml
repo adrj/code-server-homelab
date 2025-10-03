@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  vscode-server:
+  code-server:
     build:
       context: .
       dockerfile: Dockerfile.vscode-server
-    image: vscode-server:local
-    container_name: vscode-server
+    image: code-server:local
+    container_name: code-server
     ports:
       - "2222:2222"
     volumes:

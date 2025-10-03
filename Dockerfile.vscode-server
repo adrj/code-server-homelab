@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-# Minimal image to run vscode-server remote and docker client
+# Minimal image to run code-server remote and docker client
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     ca-certificates \

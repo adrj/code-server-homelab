@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  runner:
+    image: docker:24-cli
+    container_name: code-server-deployer
+    volumes:
+      - ./:/workspace:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspace
+    entrypoint: ["/bin/sh","-c","/workspace/deploy/deploy-and-run.sh"]
+    environment:
+      IMAGE_NAME: "localhost:5000/code-server"
+      IMAGE_TAG: "latest"
+      CONTAINER_NAME: "code-server"
+      VOLUME_NAME: "code-server"
+      HOST_SSH_PORT: "2222"
+      WORKDIR: "/workspace"
+      PUSH_IMAGE: "0"
+    restart: "no"

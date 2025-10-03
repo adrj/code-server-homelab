@@ -143,7 +143,7 @@ Variáveis de ambiente importantes (pode setar via environment variables no comp
 - `REPO_URL` - URL do repositório git (por padrão o repositório deste projeto)
 - `BRANCH` - branch para observar (default: `main`)
 - `POLL_INTERVAL` - intervalo em segundos entre checagens (default: 60)
-- `IMAGE_NAME` - nome completo da imagem que será construída (ex.: `localhost:5000/vscode-server`)
+- `IMAGE_NAME` - nome completo da imagem que será construída (ex.: `localhost:5000/code-server`)
 - `IMAGE_TAG` - tag da imagem (default: `latest`) — o script usa `IMAGE_TAG` para taggar e empurrar a imagem
 - `DEPLOY_CMD` - comando a ser executado no host após push (ex.: `cd /opt/stacks/code-server && docker-compose pull && docker-compose up -d`)
 
@@ -154,7 +154,7 @@ docker compose -f watcher/docker-compose.watcher.yml up -d --build \
   -e REPO_URL="https://github.com/adrj/code-server-homelab.git" \
   -e BRANCH=main \
   -e POLL_INTERVAL=30 \
-  -e IMAGE_NAME=localhost:5000/vscode-server \
+  -e IMAGE_NAME=localhost:5000/code-server \
   -e IMAGE_TAG=latest \
   -e DEPLOY_CMD="cd /opt/stacks/code-server && docker-compose pull && docker-compose up -d --remove-orphans"
 ```
@@ -166,3 +166,23 @@ Observações:
 - O watcher é uma solução simples e leve para ambientes off-line em relação ao GitHub; para ambientes com integração contínua completa, use GitHub Actions + registry acessível.
 
 Fique à vontade para pedir que eu gere um systemd unit ou instruções para rodar o watcher como serviço no host, ou para eu ajustar o comando de deploy para usar API do Portainer em vez de `docker-compose`.
+
+## Deploy local (scripted)
+
+Se quiser um comando único que force remover/buildar e rodar o container `code-server` localmente (útil para testar), use o `docker-compose.deploy.yml` incluído.
+
+1. Para executar no host (PowerShell):
+
+```powershell
+cd e:\dev-tools\workspace\vscode-server
+docker compose -f docker-compose.deploy.yml up --build
+```
+
+O `runner` no compose executa o script `deploy/deploy-and-run.sh`, que:
+- remove imagem existente (se houver),
+- builda a imagem a partir do contexto do repositório,
+- (opcional) faz push para registry se `PUSH_IMAGE=1`,
+- remove container antigo chamado `code-server` e inicia o novo.
+
+Adapte variáveis de ambiente no `docker-compose.deploy.yml` conforme necessário (IMAGE_NAME, IMAGE_TAG, VOLUME_NAME, etc.).
+
