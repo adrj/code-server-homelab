@@ -118,4 +118,25 @@ else
 fi
 
 echo "Starting sshd..."
-/usr/sbin/sshd -D
+
+# Verificar se a configuração do SSH está OK
+echo "Verificando configuração SSH..."
+/usr/sbin/sshd -t
+if [ $? -ne 0 ]; then
+  echo "Erro na configuração SSH!"
+  exit 1
+fi
+
+# Verificar se a porta 2222 está disponível
+echo "Verificando porta 2222..."
+netstat -ln | grep :2222 || echo "Porta 2222 disponível"
+
+# Gerar chaves do host se não existirem
+if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+  echo "Gerando chaves SSH do host..."
+  ssh-keygen -A
+fi
+
+# Iniciar sshd
+echo "Iniciando SSH daemon..."
+exec /usr/sbin/sshd -D

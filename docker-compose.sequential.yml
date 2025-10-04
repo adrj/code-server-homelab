@@ -76,8 +76,8 @@ services:
           exit 1
         fi
         
-        # Start code server
-        echo 'Starting Code Server...'
+        # Start code server initialization
+        echo 'Starting Code Server initialization...'
         /usr/local/bin/init-users.sh
       "
 
