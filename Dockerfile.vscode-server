@@ -67,14 +67,21 @@ RUN set -eux; \
 
 # Create a user and copy init script
 COPY init-users.sh /usr/local/bin/init-users.sh
-# Copy repository-provided users into image so init script can seed the volume when empty
+# Setup users directory 
 ARG IMAGE_VERSION=dev
-COPY users /opt/repo-users
-RUN echo "${IMAGE_VERSION}" > /opt/repo-users/.image_version \
+RUN mkdir -p /opt/repo-users \
+  && echo "${IMAGE_VERSION}" > /opt/repo-users/.image_version \
   && useradd -m -s /bin/bash coder \
   && echo "coder ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/coder \
   && chmod +x /usr/local/bin/init-users.sh \
   && mkdir -p /var/run/sshd
+
+# Copy users directory if it exists, otherwise create placeholder
+COPY . /tmp/build-context
+RUN if [ -d "/tmp/build-context/users" ]; then \
+      cp -r /tmp/build-context/users/* /opt/repo-users/ 2>/dev/null || true; \
+    fi && \
+    rm -rf /tmp/build-context
 EXPOSE 2222
 
 CMD ["/usr/sbin/sshd","-D"]

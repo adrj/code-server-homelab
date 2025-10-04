@@ -26,7 +26,7 @@ services:
         # Clean old images
         docker rmi localhost:5000/code-server:latest 2>/dev/null || true
         
-        # Build new image
+        # Build new image with current directory as context
         docker build --no-cache \\
           -t localhost:5000/code-server:latest \\
           -f Dockerfile.vscode-server \\

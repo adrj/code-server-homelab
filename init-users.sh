@@ -76,6 +76,13 @@ else
   for d in ${USERS_DIR}/*/ ; do
     [ -d "$d" ] || continue
     username=$(basename "$d")
+    
+    # Skip if it's a hidden directory or system file
+    if [[ "$username" == .* ]] || [[ "$username" == "users" ]]; then
+      echo "Skipping: $username (system directory)"
+      continue
+    fi
+    
     echo "Processing user: $username"
 
     # Create user if not exists
@@ -84,17 +91,23 @@ else
       echo "$username ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/${username}
     fi
 
-    # Setup .ssh
+    # Setup .ssh directory
     mkdir -p /home/${username}/.ssh
+    
+    # Only process authorized_keys if the file exists
     if [ -f "${d}authorized_keys" ]; then
-      cat "${d}authorized_keys" >> /home/${username}/.ssh/authorized_keys
+      cp "${d}authorized_keys" /home/${username}/.ssh/authorized_keys
+    elif [ -f "${d}id_rsa.pub" ]; then
+      cp "${d}id_rsa.pub" /home/${username}/.ssh/authorized_keys
+    else
+      # Create empty authorized_keys if no keys found
+      touch /home/${username}/.ssh/authorized_keys
     fi
-    if [ -f "${d}id_rsa.pub" ]; then
-      cat "${d}id_rsa.pub" >> /home/${username}/.ssh/authorized_keys
-    fi
-    chown -R ${username}:${username} /home/${username}/.ssh || true
-    chmod 700 /home/${username}/.ssh || true
-    chmod 600 /home/${username}/.ssh/authorized_keys || true
+    
+    # Set correct permissions
+    chown -R ${username}:${username} /home/${username}/.ssh
+    chmod 700 /home/${username}/.ssh
+    chmod 600 /home/${username}/.ssh/authorized_keys
 
     # If password file present, set password (useful for testing; not recommended for production)
     if [ -f "${d}password" ]; then
