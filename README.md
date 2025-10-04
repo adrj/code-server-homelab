@@ -115,9 +115,25 @@ Diga qual opção prefere e seu ambiente (IP público, uso de Traefik, se já te
 
 ## Deploy e Atualização
 
+### Deploy com Builder Separado (Recomendado)
+
+Para fazer deploy com rebuild automático usando containers separados:
+
+```bash
+# Linux/macOS
+./build-and-deploy.sh
+
+# Windows
+build-and-deploy.bat
+```
+
+Este processo executa:
+1. **Container Builder**: Clona/atualiza repo, rebuilda imagem, push para registry
+2. **Container Code-Server**: Aguarda builder terminar, depois inicia o serviço
+
 ### Deploy Manual Simples
 
-Para fazer deploy local:
+Para fazer deploy local básico:
 
 ```bash
 # Clonar o repositório
@@ -131,9 +147,9 @@ docker volume create code-server
 docker-compose up -d
 ```
 
-### Rebuild e Deploy (Recomendado)
+### Rebuild Manual (Alternativo)
 
-Para forçar rebuild da imagem quando adicionar novos usuários:
+Para forçar rebuild da imagem manualmente:
 
 ```bash
 # Linux/macOS
@@ -143,26 +159,28 @@ Para forçar rebuild da imagem quando adicionar novos usuários:
 rebuild-and-deploy.bat
 ```
 
-Este script vai:
-1. Parar o container atual
-2. Remover imagens existentes
-3. Fazer pull das mudanças do repositório
-4. Fazer rebuild completo da imagem (no-cache)
-5. Subir o container novamente
-
 ### Para Portainer
 
-Use o compose específico para Portainer (usa imagem do registry):
+#### Opção 1: Stack com Builder Separado
+Use o `docker-compose.sequential.yml` no Portainer:
+1. Crie a stack com este arquivo
+2. Execute a stack - o builder roda primeiro, depois o code-server
+3. O builder cria a imagem e a envia para `localhost:5000`
+
+#### Opção 2: Stack Simples (Registry)
+Use o `docker-compose.portainer.yml` se a imagem já existe no registry:
 
 ```yaml
-# Use docker-compose.portainer.yml
 # Certifique-se que localhost:5000/code-server:latest existe no registry
 ```
 
-Para atualizar no Portainer:
-1. Faça push das mudanças para o repositório
-2. No seu servidor, execute: `./rebuild-and-deploy.sh`
-3. A imagem será rebuilded e o container reiniciado automaticamente
+### Arquivos de Deploy Disponíveis
+
+- `docker-compose.yml` - Deploy local com build
+- `docker-compose.sequential.yml` - Deploy com builder separado
+- `docker-compose.portainer.yml` - Deploy via registry (Portainer)
+- `docker-compose.rebuild-first.yml` - Deploy avançado com healthcheck
+- `build-and-deploy.sh/.bat` - Scripts de deploy automatizado
 
 O watcher funciona assim:
 

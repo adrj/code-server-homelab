@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Container de rebuild - executa primeiro
+  rebuild-image:
+    image: docker:24-cli
+    container_name: code-server-rebuild
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - rebuild-workspace:/workspace
+    environment:
+      - REPO_URL=https://github.com/adrj/code-server-homelab.git
+      - REGISTRY_URL=localhost:5000
+      - IMAGE_NAME=code-server
+    working_dir: /workspace
+    command: |
+      sh -c "
+        echo '=== Code Server - Rebuild Image ==='
+        echo 'Data: '`date`
+        
+        # Instalar dependências
+        echo 'Instalando dependências...'
+        apk add --no-cache git docker-compose curl
+        
+        # Verificar se já existe o repositório ou clonar
+        if [ ! -d repo ]; then
+          echo 'Clonando repositório...'
+          git clone \$$REPO_URL repo
+        else
+          echo 'Atualizando repositório...'
+          cd repo && git pull origin main && cd ..
+        fi
+        
+        cd repo
+        
+        # Parar container principal se estiver rodando
+        echo 'Parando container code-server existente...'
+        docker stop code-server 2>/dev/null || true
+        docker rm code-server 2>/dev/null || true
+        
+        # Remover imagens antigas para forçar rebuild
+        echo 'Removendo imagens antigas...'
+        docker rmi \$$REGISTRY_URL/\$$IMAGE_NAME:latest 2>/dev/null || true
+        docker rmi \$$IMAGE_NAME:local 2>/dev/null || true
+        
+        # Gerar versão baseada no hash dos usuários
+        USERS_VERSION=\$$(git log -1 --pretty=format:%H -- users)
+        echo 'Versão dos usuários: '\$$USERS_VERSION
+        
+        # Build da imagem com no-cache
+        echo 'Fazendo build da imagem (no-cache)...'
+        docker build --no-cache \\
+          -t \$$REGISTRY_URL/\$$IMAGE_NAME:latest \\
+          -t \$$REGISTRY_URL/\$$IMAGE_NAME:\$$USERS_VERSION \\
+          -f Dockerfile.vscode-server \\
+          --build-arg IMAGE_VERSION=\"\$$USERS_VERSION\" .
+        
+        # Push para registry
+        echo 'Enviando imagem para registry...'
+        docker push \$$REGISTRY_URL/\$$IMAGE_NAME:latest
+        docker push \$$REGISTRY_URL/\$$IMAGE_NAME:\$$USERS_VERSION
+        
+        # Criar arquivo de status para sinalizar conclusão
+        echo \$$USERS_VERSION > /workspace/build-complete.txt
+        echo 'registry-image: '\$$REGISTRY_URL/\$$IMAGE_NAME:latest >> /workspace/build-complete.txt
+        echo 'version-tag: '\$$REGISTRY_URL/\$$IMAGE_NAME:\$$USERS_VERSION >> /workspace/build-complete.txt
+        
+        echo '=== Rebuild concluído! ==='
+        echo 'Imagem disponível em: '\$$REGISTRY_URL/\$$IMAGE_NAME:latest
+        echo 'Versão: '\$$USERS_VERSION
+        echo 'Arquivo de status criado: /workspace/build-complete.txt'
+      "
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/workspace/build-complete.txt"]
+      interval: 10s
+      timeout: 5s
+      retries: 1
+      start_period: 30s
+
+  # Container principal - aguarda o rebuild
+  code-server:
+    image: localhost:5000/code-server:latest
+    container_name: code-server
+    ports:
+      - "2222:2222"
+    volumes:
+      - code-server:/users-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - rebuild-workspace:/rebuild-status:ro
+    environment:
+      - TZ=America/Sao_Paulo
+    restart: unless-stopped
+    depends_on:
+      rebuild-image:
+        condition: service_healthy
+    command: |
+      bash -c "
+        echo '=== Code Server - Starting ==='
+        
+        # Verificar se o rebuild foi concluído
+        if [ -f /rebuild-status/build-complete.txt ]; then
+          echo 'Rebuild status:'
+          cat /rebuild-status/build-complete.txt
+          echo '---'
+        fi
+        
+        # Executar inicialização normal
+        /usr/local/bin/init-users.sh
+      "
+
+volumes:
+  code-server:
+    external: true
+  rebuild-workspace:

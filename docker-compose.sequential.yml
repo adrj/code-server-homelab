@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # Etapa 1: Builder - Executa rebuild da imagem
+  builder:
+    image: docker:24-cli
+    container_name: code-server-builder
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - builder-status:/status
+    environment:
+      - REPO_URL=https://github.com/adrj/code-server-homelab.git
+    command: |
+      sh -c "
+        echo '=== Code Server Builder ==='
+        
+        # Setup
+        apk add --no-cache git
+        git clone \$$REPO_URL /tmp/repo || (cd /tmp/repo && git pull)
+        cd /tmp/repo
+        
+        # Get version
+        VERSION=\$$(git log -1 --pretty=format:%H -- users)
+        echo 'Building version: '\$$VERSION
+        
+        # Clean old images
+        docker rmi localhost:5000/code-server:latest 2>/dev/null || true
+        
+        # Build new image
+        docker build --no-cache \\
+          -t localhost:5000/code-server:latest \\
+          -f Dockerfile.vscode-server \\
+          --build-arg IMAGE_VERSION=\"\$$VERSION\" .
+        
+        # Push to registry
+        docker push localhost:5000/code-server:latest
+        
+        # Signal completion
+        echo 'SUCCESS' > /status/build-status
+        echo \$$VERSION > /status/version
+        echo 'Build completed successfully!'
+      "
+    restart: "no"
+
+  # Etapa 2: Code Server - Aguarda builder completar
+  code-server:
+    image: localhost:5000/code-server:latest
+    container_name: code-server
+    ports:
+      - "2222:2222"
+    volumes:
+      - code-server:/users-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - builder-status:/build-status:ro
+    environment:
+      - TZ=America/Sao_Paulo
+    restart: unless-stopped
+    depends_on:
+      - builder
+    command: |
+      bash -c "
+        echo '=== Code Server Starting ==='
+        
+        # Wait for builder to complete
+        echo 'Waiting for builder to complete...'
+        while [ ! -f /build-status/build-status ]; do
+          echo 'Waiting for build...'
+          sleep 5
+        done
+        
+        if [ \"\$(cat /build-status/build-status)\" = 'SUCCESS' ]; then
+          echo 'Build completed successfully!'
+          echo 'Version: '\$(cat /build-status/version 2>/dev/null || echo 'unknown')
+        else
+          echo 'Build failed!'
+          exit 1
+        fi
+        
+        # Start code server
+        echo 'Starting Code Server...'
+        /usr/local/bin/init-users.sh
+      "
+
+volumes:
+  code-server:
+    external: true
+  builder-status:

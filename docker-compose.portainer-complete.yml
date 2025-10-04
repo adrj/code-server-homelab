@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Service principal do code-server
+  code-server:
+    image: localhost:5000/code-server:latest
+    container_name: code-server
+    ports:
+      - "2222:2222"
+    volumes:
+      - code-server:/users-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=America/Sao_Paulo
+    restart: unless-stopped
+    command: ["/bin/bash","-c","/usr/local/bin/init-users.sh"]
+
+  # Service de rebuild (execute quando precisar atualizar)
+  rebuild-service:
+    image: docker:24-cli
+    container_name: code-server-rebuild-service
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes/code-server-homelab_code-server:/repo-volume
+    environment:
+      - REPO_URL=https://github.com/adrj/code-server-homelab.git
+      - REGISTRY_URL=localhost:5000
+    command: |
+      sh -c "
+        echo '=== Code Server - Rebuild Service ==='
+        apk add --no-cache git docker-compose curl
+        
+        # Clone ou update do repositório
+        if [ ! -d /tmp/repo ]; then
+          git clone \$$REPO_URL /tmp/repo
+        else
+          cd /tmp/repo && git pull origin main
+        fi
+        
+        cd /tmp/repo
+        
+        echo 'Parando container code-server...'
+        docker stop code-server 2>/dev/null || true
+        
+        echo 'Removendo imagens antigas...'
+        docker rmi code-server:local 2>/dev/null || true
+        docker rmi \$$REGISTRY_URL/code-server:latest 2>/dev/null || true
+        
+        echo 'Fazendo build da nova imagem...'
+        USERS_VERSION=\$$(git log -1 --pretty=format:%H -- users)
+        docker build --no-cache -t \$$REGISTRY_URL/code-server:latest -f Dockerfile.vscode-server --build-arg IMAGE_VERSION=\"\$$USERS_VERSION\" .
+        
+        echo 'Enviando para registry...'
+        docker push \$$REGISTRY_URL/code-server:latest
+        
+        echo 'Atualizando versão no volume...'
+        echo \"\$$USERS_VERSION\" > /repo-volume/.image_version
+        
+        echo 'Reiniciando container code-server...'
+        docker start code-server 2>/dev/null || echo 'Container será criado pelo Portainer'
+        
+        echo '=== Rebuild concluído! ==='
+        echo 'Versão: '\$$USERS_VERSION
+        echo 'Imagem: '\$$REGISTRY_URL/code-server:latest
+      "
+    restart: "no"
+    profiles:
+      - rebuild
+
+volumes:
+  code-server:
+    external: true

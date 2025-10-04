@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  rebuild-runner:
+    image: docker:24-cli
+    container_name: code-server-rebuild
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    command: |
+      sh -c "
+        echo '=== Code Server - Rebuild via Portainer ==='
+        echo 'Instalando git e docker-compose...'
+        apk add --no-cache git docker-compose
+        
+        echo 'Fazendo pull das mudanças...'
+        git pull origin main
+        
+        echo 'Parando container existente...'
+        docker-compose down 2>/dev/null || true
+        
+        echo 'Removendo imagens antigas...'
+        docker rmi code-server:local 2>/dev/null || true
+        docker rmi localhost:5000/code-server:latest 2>/dev/null || true
+        
+        echo 'Gerando versão baseada nos usuários...'
+        USERS_VERSION=\$$(git log -1 --pretty=format:%H -- users)
+        echo \"Versão dos usuários: \$$USERS_VERSION\"
+        
+        echo 'Fazendo build da imagem (no-cache)...'
+        IMAGE_VERSION=\$$USERS_VERSION docker-compose build --no-cache
+        
+        echo 'Taggeando e enviando para registry local...'
+        docker tag code-server:local localhost:5000/code-server:latest
+        docker push localhost:5000/code-server:latest
+        
+        echo 'Subindo container...'
+        docker-compose up -d
+        
+        echo 'Status final:'
+        docker-compose ps
+        
+        echo '=== Rebuild concluído! ==='
+      "
+    restart: "no"
