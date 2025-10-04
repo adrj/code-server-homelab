@@ -113,11 +113,56 @@ Se quiser, eu posso:
 
 Diga qual opção prefere e seu ambiente (IP público, uso de Traefik, se já tem `portainer_network`).
 
---
+## Deploy e Atualização
 
-## Watcher local para ambientes sem acesso ao GitHub Actions
+### Deploy Manual Simples
 
-Se o seu ambiente (Portainer/host) não é acessível a partir do GitHub (por exemplo, registry local em `localhost:5000` e rede fechada), este repositório inclui um pequeno "watcher" que você pode executar diretamente no host.
+Para fazer deploy local:
+
+```bash
+# Clonar o repositório
+git clone https://github.com/adrj/code-server-homelab.git
+cd code-server-homelab
+
+# Criar volume externo
+docker volume create code-server
+
+# Build e run
+docker-compose up -d
+```
+
+### Rebuild e Deploy (Recomendado)
+
+Para forçar rebuild da imagem quando adicionar novos usuários:
+
+```bash
+# Linux/macOS
+./rebuild-and-deploy.sh
+
+# Windows
+rebuild-and-deploy.bat
+```
+
+Este script vai:
+1. Parar o container atual
+2. Remover imagens existentes
+3. Fazer pull das mudanças do repositório
+4. Fazer rebuild completo da imagem (no-cache)
+5. Subir o container novamente
+
+### Para Portainer
+
+Use o compose específico para Portainer (usa imagem do registry):
+
+```yaml
+# Use docker-compose.portainer.yml
+# Certifique-se que localhost:5000/code-server:latest existe no registry
+```
+
+Para atualizar no Portainer:
+1. Faça push das mudanças para o repositório
+2. No seu servidor, execute: `./rebuild-and-deploy.sh`
+3. A imagem será rebuilded e o container reiniciado automaticamente
 
 O watcher funciona assim:
 
@@ -185,4 +230,26 @@ O `runner` no compose executa o script `deploy/deploy-and-run.sh`, que:
 - remove container antigo chamado `code-server` e inicia o novo.
 
 Adapte variáveis de ambiente no `docker-compose.deploy.yml` conforme necessário (IMAGE_NAME, IMAGE_TAG, VOLUME_NAME, etc.).
+
+## Auto-rebuild no Portainer via Webhook
+
+Para fazer o Portainer rebuildar automaticamente quando o repositório for atualizado:
+
+### 1. Configure webhook na Stack do Portainer:
+- No Portainer, vá para a sua stack → Settings
+- Habilite "Git-based deployment" se não estiver
+- Copie o webhook URL (ex.: `https://seu-portainer.com/api/webhooks/123abc`)
+
+### 2. Configure webhook no GitHub:
+- No repositório GitHub → Settings → Webhooks → Add webhook
+- Payload URL: cole o webhook URL do Portainer
+- Content type: `application/json`
+- Events: selecione "Just the push event"
+- Active: marcado
+
+### 3. Teste o webhook:
+- Faça um commit/push no repositório
+- O Portainer deve detectar a mudança e rebuildar a stack automaticamente
+
+Nota: O Portainer deve ter acesso ao repositório (público ou com credenciais configuradas) e o contexto de build deve incluir a pasta `users/` para evitar erros de build.
 

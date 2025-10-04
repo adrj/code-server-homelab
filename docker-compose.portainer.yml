@@ -2,12 +2,7 @@ version: '3.8'
 
 services:
   code-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.vscode-server
-      args:
-        IMAGE_VERSION: "${IMAGE_VERSION:-latest}"
-    image: code-server:local
+    image: localhost:5000/code-server:latest
     container_name: code-server
     ports:
       - "2222:2222"
